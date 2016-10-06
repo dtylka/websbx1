@@ -6,9 +6,9 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 
 	"github.com/gorilla/mux"
+	"gopkg.in/mgo.v2/bson"
 )
 
 func Index(w http.ResponseWriter, r *http.Request) {
@@ -17,15 +17,10 @@ func Index(w http.ResponseWriter, r *http.Request) {
 }
 
 func TodoIndex(w http.ResponseWriter, r *http.Request) {
-	//fmt.Fprintln(w, "Todo Index!")
-
-	// todos := Todos{
-	// 	Todo{Name: "Write presentation"},
-	// 	Todo{Name: "Host meetup"},
-	// }
-
 	w.Header().Set("Content-Type", "application/json;charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
+
+	todos := RepoListTodo()
 
 	if err := json.NewEncoder(w).Encode(todos); err != nil {
 		panic(err)
@@ -34,15 +29,22 @@ func TodoIndex(w http.ResponseWriter, r *http.Request) {
 
 func TodoShow(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	var todoId int
-	var err error
+	var todoId bson.ObjectId
 
-	if todoId, err = strconv.Atoi(vars["todoId"]); err != nil {
-		panic(err)
+	if !bson.IsObjectIdHex(vars["todoId"]) {
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.WriteHeader(http.StatusNotFound)
+		if err := json.NewEncoder(w).Encode(jsonErr{Code: http.StatusNotFound, Text: "Invalid Id"}); err != nil {
+			panic(err)
+		}
+		return
 	}
 
-	todo := RepoFindTodo(todoId)
-	if todo.Id > 0 {
+	todoId = bson.ObjectIdHex(vars["todoId"])
+
+	foundTodo, todo := RepoFindTodo(todoId)
+
+	if foundTodo {
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(todo); err != nil {
@@ -60,6 +62,7 @@ func TodoShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func TodoCreate(w http.ResponseWriter, r *http.Request) {
+
 	var todo Todo
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 
@@ -85,5 +88,31 @@ func TodoCreate(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(t); err != nil {
 		panic(err)
 	}
+}
+
+func TodoDelete(w http.ResponseWriter, r *http.Request) {
+	var todo Todo
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
+
+	if err != nil {
+		panic(err)
+	}
+
+	if err := r.Body.Close(); err != nil {
+		panic(err)
+	}
+
+	if err := json.Unmarshal(body, &todo); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.WriteHeader(422) // unprocessable entity
+		if err := json.NewEncoder(w).Encode(err); err != nil {
+			panic(err)
+		}
+	}
+
+	RepoDestroyTodo(todo.Name)
+
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+	w.WriteHeader(http.StatusNoContent) // unprocessable entity
 
 }

@@ -1,42 +1,52 @@
 package main
 
 import (
-	"fmt"
+	"gopkg.in/mgo.v2"
+	"gopkg.in/mgo.v2/bson"
 )
 
-var currentId int
+func RepoListTodo() []Todo {
+	var todos []Todo
 
-var todos Todos
-
-func init() {
-	RepoCreateTodo(Todo{Name: "Write presentation2"})
-	RepoCreateTodo(Todo{Name: "Host meetup2"})
-}
-
-func RepoFindTodo(id int) Todo {
-	for _, t := range todos {
-		if t.Id == id {
-			return t
-		}
+	session := getSession()
+	if err := session.DB("sbx1").C("todo").Find(bson.M{}).All(&todos); err != nil {
+		panic(err)
 	}
 
-	return Todo{}
+	return todos
+}
+
+func RepoFindTodo(id bson.ObjectId) (bool, Todo) {
+	t := Todo{}
+
+	session := getSession()
+	if err := session.DB("sbx1").C("todo").FindId(id).One(&t); err != nil {
+		return false, t
+	}
+
+	return true, t
 }
 
 func RepoCreateTodo(t Todo) Todo {
-	currentId += 1
-	t.Id = currentId
-	todos = append(todos, t)
+	t.Id = bson.NewObjectId()
+
+	session := getSession()
+	session.DB("sbx1").C("todo").Insert(t)
+
 	return t
 }
 
-func RepoDestroyTodo(id int) error {
-	for i, t := range todos {
-		if t.Id == id {
-			todos = append(todos[:i], todos[i+1:]...)
-			return nil
-		}
+func RepoDestroyTodo(name string) {
+	session := getSession()
+	session.DB("sbx1").C("todo").Remove(bson.M{"name": name})
+}
+
+func getSession() *mgo.Session {
+	s, err := mgo.Dial("mongodb://localhost")
+
+	if err != nil {
+		panic(err)
 	}
 
-	return fmt.Errorf("Could not find Todo with id of %d to delete", id)
+	return s
 }
